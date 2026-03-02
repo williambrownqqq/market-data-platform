@@ -45,22 +45,43 @@
 
 FROM eclipse-temurin:21-jdk-alpine AS build
 
-WORKDIR /app
+WORKDIR /workspace
 
-RUN apk add --no-cache maven
+RUN apk add --no-cache maven tree
 
-# Copy entire project
 COPY . .
 
-# Build only this module
+# Show the source file structure
+RUN echo "=== Source file structure ===" && \
+    find eureka-server/src -name "*.java" && \
+    echo ""
+
+# Build
 RUN mvn clean package -pl eureka-server -am -DskipTests
 
+# Show what was built
+RUN echo "=== Target directory ===" && \
+    ls -lah /workspace/eureka-server/target/ && \
+    echo ""
+
+# Show what's IN the JAR
+RUN cd /workspace/eureka-server/target && \
+    MAIN_JAR=$(ls -1 *.jar | grep -v ".original" | head -1) && \
+    echo "=== Contents of $MAIN_JAR ===" && \
+    jar -tf "$MAIN_JAR" | head -50 && \
+    echo "..." && \
+    echo "" && \
+    echo "=== Searching for .class files ===" && \
+    jar -tf "$MAIN_JAR" | grep "\.class$" | head -20 && \
+    echo "" && \
+    echo "=== Searching for EurekaServer ===" && \
+    jar -tf "$MAIN_JAR" | grep -i eureka && \
+    echo "" && \
+    echo "=== MANIFEST.MF ===" && \
+    jar -xf "$MAIN_JAR" META-INF/MANIFEST.MF && \
+    cat META-INF/MANIFEST.MF
+
 FROM eclipse-temurin:21-jre-alpine
-
 WORKDIR /app
-
-COPY --from=build /app/eureka-server/target/*.jar app.jar
-
-EXPOSE 8761
-
-ENTRYPOINT ["java", "-jar", "app.jar"]
+COPY --from=build /workspace/eureka-server/target/eureka-server*.jar /app/app.jar
+CMD ["java", "-jar", "app.jar"]
